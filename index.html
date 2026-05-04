@@ -2,14 +2,14 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Office Expense Smart Tool</title>
+<title>Office Expense Pro AI Tool</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
 body { font-family: Arial; background:#f4f6f9; }
-.container { max-width:1000px; margin:auto; padding:20px; }
+.container { max-width:1100px; margin:auto; padding:20px; }
 
 .box {
   background:#fff;
@@ -22,19 +22,30 @@ body { font-family: Arial; background:#f4f6f9; }
 
 textarea {
   width:100%;
-  height:200px;
-  padding:10px;
+  height:220px;
+  padding:40px 10px 10px 10px;
   font-size:14px;
 }
 
 .overlay {
   position:absolute;
-  top:10px;
+  top:45px;
   left:10px;
   color:#999;
   pointer-events:none;
   font-size:13px;
-  white-space:pre-line;
+}
+
+.controls {
+  position:absolute;
+  top:5px;
+  right:5px;
+}
+
+.controls button {
+  margin-left:5px;
+  font-size:12px;
+  padding:5px;
 }
 
 table {
@@ -46,7 +57,7 @@ th, td {
   padding:8px;
 }
 
-button { padding:10px; margin-right:10px; }
+button { cursor:pointer; }
 </style>
 </head>
 
@@ -54,35 +65,42 @@ button { padding:10px; margin-right:10px; }
 
 <div class="container">
 
-<h2>🧾 Office Expense Smart Tool</h2>
+<h2>🧾 Office Expense Pro AI Tool</h2>
 
-<!-- FORMAT -->
 <div class="box">
-<h3>Select Output Format</h3>
+<input id="company" placeholder="Company Name" style="width:100%; padding:10px;">
+</div>
+
+<div class="box">
 <select id="format" onchange="changeFormat()">
-  <option value="expense">Simple Expense</option>
+  <option value="expense">Expense</option>
   <option value="invoice">Invoice</option>
   <option value="ledger">Ledger</option>
   <option value="custom">Custom</option>
 </select>
 </div>
 
-<!-- INPUT -->
 <div class="box">
-<h3>Enter Data</h3>
 <div class="wrap">
+
+<!-- BUTTONS -->
+<div class="controls">
+  <button onclick="addColumn()">➕ Column</button>
+  <button onclick="addFormula()">🧮 Formula</button>
+  <button onclick="addSample()">⚡ Sample</button>
+  <button onclick="clearAll()">🧹</button>
+</div>
+
 <div id="overlay" class="overlay"></div>
 <textarea id="input"></textarea>
+
 </div>
 </div>
 
-<!-- OUTPUT -->
 <div class="box">
-<h3>Live Output</h3>
 <div id="output"></div>
 </div>
 
-<!-- EXPORT -->
 <div class="box">
 <button onclick="downloadExcel()">Excel</button>
 <button onclick="downloadPDF()">PDF</button>
@@ -96,82 +114,111 @@ button { padding:10px; margin-right:10px; }
 let schema = [];
 let db = [];
 let format = "expense";
+let formulas = [];
 
-// ================= FORMAT CONFIG =================
 const formats = {
   expense: ["SL","Item","Amount"],
   invoice: ["Invoice","Product","Shop","Amount"],
   ledger: ["Date","Description","Amount","Balance"]
 };
 
-// ================= CHANGE FORMAT =================
-function changeFormat(){
-  format = document.getElementById("format").value;
+// ================= BUTTON ACTIONS =================
 
-  if(format !== "custom"){
-    schema = formats[format];
+function addColumn(){
+  let col = prompt("Enter column name:");
+  if(!col) return;
+
+  let text = input.value;
+  if(!text.includes("#columns")){
+    input.value = "#columns: " + col + "\n\n#data:\n";
+  } else {
+    input.value = text.replace("#columns:", "#columns: " + col + ", ");
   }
-
   process();
 }
 
-// ================= SAFE CALC =================
-function calc(val){
-  if(/^[0-9+\-*/(). ]+$/.test(val)){
-    try { return Function('"use strict";return ('+val+')')(); }
-    catch { return val; }
+function addFormula(){
+  let f = prompt("Enter formula (example: total = amount * 2)");
+  if(!f) return;
+
+  let text = input.value;
+  if(!text.includes("#formulas")){
+    input.value += "\n#formulas:\n" + f;
+  } else {
+    input.value += "\n" + f;
   }
-  return val;
+  process();
+}
+
+function addSample(){
+  input.value = "1, coffee, 50\n2, tea, 30";
+  process();
+}
+
+function clearAll(){
+  input.value = "";
+  process();
+}
+
+// ================= FORMAT =================
+function changeFormat(){
+  format = document.getElementById("format").value;
+  if(format !== "custom"){
+    schema = formats[format];
+  }
+  process();
 }
 
 // ================= PROCESS =================
 function process(){
 
-  let text = document.getElementById("input").value.trim();
-
+  let text = input.value.trim();
   let rows = text.split("\n").filter(r=>r.trim());
+
   db = [];
+  let total = 0;
 
-  // Custom mode auto-detect
-  if(format === "custom" && rows.length > 0){
-    let cols = rows[0].split(",");
-    schema = cols.map((_,i)=>"col"+(i+1));
-  }
+  rows.forEach((r,i)=>{
 
-  rows.forEach((r,index)=>{
-    let vals = r.split(",").map(v=> calc(v.trim()));
+    if(r.startsWith("#")) return;
+
+    let vals = r.split(",").map(v=>v.trim());
     let obj = {};
 
-    schema.forEach((col,i)=>{
-      obj[col] = vals[i] || "";
+    schema.forEach((col,index)=>{
+      obj[col] = vals[index] || "";
     });
 
-    // Ledger auto balance
+    if(format === "expense" || format === "invoice"){
+      total += Number(obj["Amount"]||0);
+    }
+
     if(format === "ledger"){
-      let prev = db[index-1]?.Balance || 0;
+      let prev = db[i-1]?.Balance || 0;
       obj["Balance"] = Number(prev) + Number(obj["Amount"]||0);
     }
 
     db.push(obj);
   });
 
-  render();
+  render(total);
   updateOverlay();
 }
 
 // ================= INPUT =================
-document.getElementById("input").addEventListener("input", process);
+const input = document.getElementById("input");
+input.addEventListener("input", process);
 
 // ================= OVERLAY =================
 function updateOverlay(){
 
-  let text = document.getElementById("input").value;
+  let text = input.value;
 
   let msg = [];
 
   if(text.trim()===""){
-    msg.push("Type like: 1, coffee, 50");
-    msg.push("Comma = next column | Enter = next row");
+    msg.push("Type: 1, coffee, 50");
+    msg.push("Comma = next column");
   } else {
     msg.push("Live updating...");
   }
@@ -180,12 +227,13 @@ function updateOverlay(){
 }
 
 // ================= RENDER =================
-function render(){
+function render(total){
 
-  if(schema.length===0) return;
+  let company = document.getElementById("company").value;
 
-  let html = "<table><tr>";
+  let html = `<h3>${company || "Company Name"}</h3>`;
 
+  html += "<table><tr>";
   schema.forEach(c=> html += `<th>${c}</th>`);
   html += "</tr>";
 
@@ -198,6 +246,10 @@ function render(){
   });
 
   html += "</table>";
+
+  if(format !== "ledger"){
+    html += `<b>Total: ${total}</b>`;
+  }
 
   document.getElementById("output").innerHTML = html;
 }
@@ -215,14 +267,14 @@ function downloadExcel(){
   let wb = XLSX.utils.book_new();
 
   XLSX.utils.book_append_sheet(wb, ws, "Data");
-  XLSX.writeFile(wb, "expenses.xlsx");
+  XLSX.writeFile(wb, "data.xlsx");
 }
 
 function downloadPDF(){
   const { jsPDF } = window.jspdf;
   let doc = new jsPDF();
-  doc.text(JSON.stringify(db,null,2),10,10);
-  doc.save("expenses.pdf");
+  doc.text(document.getElementById("output").innerText,10,10);
+  doc.save("data.pdf");
 }
 
 function downloadWord(){
@@ -234,7 +286,7 @@ function downloadWord(){
 
   let link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = "expenses.doc";
+  link.download = "data.doc";
   link.click();
 }
 
