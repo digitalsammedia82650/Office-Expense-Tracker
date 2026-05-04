@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Simple Office Expense Tool</title>
+<title>Office Expense Smart Tool</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -18,13 +18,14 @@ body { font-family: Arial; background:#f4f6f9; }
   margin-bottom:20px;
 }
 
+.wrap { position:relative; }
+
 textarea {
   width:100%;
   height:200px;
   padding:10px;
+  font-size:14px;
 }
-
-.wrap { position:relative; }
 
 .overlay {
   position:absolute;
@@ -53,20 +54,35 @@ button { padding:10px; margin-right:10px; }
 
 <div class="container">
 
-<h2>🧾 Simple Office Expense Tool</h2>
+<h2>🧾 Office Expense Smart Tool</h2>
 
+<!-- FORMAT -->
 <div class="box">
+<h3>Select Output Format</h3>
+<select id="format" onchange="changeFormat()">
+  <option value="expense">Simple Expense</option>
+  <option value="invoice">Invoice</option>
+  <option value="ledger">Ledger</option>
+  <option value="custom">Custom</option>
+</select>
+</div>
+
+<!-- INPUT -->
+<div class="box">
+<h3>Enter Data</h3>
 <div class="wrap">
 <div id="overlay" class="overlay"></div>
-<textarea id="input" placeholder=""></textarea>
+<textarea id="input"></textarea>
 </div>
 </div>
 
+<!-- OUTPUT -->
 <div class="box">
 <h3>Live Output</h3>
 <div id="output"></div>
 </div>
 
+<!-- EXPORT -->
 <div class="box">
 <button onclick="downloadExcel()">Excel</button>
 <button onclick="downloadPDF()">PDF</button>
@@ -79,7 +95,25 @@ button { padding:10px; margin-right:10px; }
 
 let schema = [];
 let db = [];
-let formulas = [];
+let format = "expense";
+
+// ================= FORMAT CONFIG =================
+const formats = {
+  expense: ["SL","Item","Amount"],
+  invoice: ["Invoice","Product","Shop","Amount"],
+  ledger: ["Date","Description","Amount","Balance"]
+};
+
+// ================= CHANGE FORMAT =================
+function changeFormat(){
+  format = document.getElementById("format").value;
+
+  if(format !== "custom"){
+    schema = formats[format];
+  }
+
+  process();
+}
 
 // ================= SAFE CALC =================
 function calc(val){
@@ -90,28 +124,33 @@ function calc(val){
   return val;
 }
 
-// ================= MAIN PROCESS =================
+// ================= PROCESS =================
 function process(){
 
   let text = document.getElementById("input").value.trim();
 
   let rows = text.split("\n").filter(r=>r.trim());
-
   db = [];
 
-  // auto detect columns from first row
-  if(rows.length > 0){
-    let firstCols = rows[0].split(",");
-    schema = firstCols.map((_,i)=>"col"+(i+1));
+  // Custom mode auto-detect
+  if(format === "custom" && rows.length > 0){
+    let cols = rows[0].split(",");
+    schema = cols.map((_,i)=>"col"+(i+1));
   }
 
-  rows.forEach(r=>{
+  rows.forEach((r,index)=>{
     let vals = r.split(",").map(v=> calc(v.trim()));
     let obj = {};
 
     schema.forEach((col,i)=>{
       obj[col] = vals[i] || "";
     });
+
+    // Ledger auto balance
+    if(format === "ledger"){
+      let prev = db[index-1]?.Balance || 0;
+      obj["Balance"] = Number(prev) + Number(obj["Amount"]||0);
+    }
 
     db.push(obj);
   });
@@ -134,7 +173,7 @@ function updateOverlay(){
     msg.push("Type like: 1, coffee, 50");
     msg.push("Comma = next column | Enter = next row");
   } else {
-    msg.push("Typing... ✔ Live updating table below");
+    msg.push("Live updating...");
   }
 
   document.getElementById("overlay").innerText = msg.join("\n");
@@ -153,7 +192,7 @@ function render(){
   db.forEach(r=>{
     html += "<tr>";
     schema.forEach(c=>{
-      html += `<td>${r[c]}</td>`;
+      html += `<td>${r[c]||""}</td>`;
     });
     html += "</tr>";
   });
@@ -198,6 +237,9 @@ function downloadWord(){
   link.download = "expenses.doc";
   link.click();
 }
+
+// INIT
+changeFormat();
 
 </script>
 
